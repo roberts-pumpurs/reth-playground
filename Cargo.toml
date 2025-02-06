@@ -1,0 +1,18 @@
+[package]
+name = "reth-poc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reth-chainspec = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-network = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-discv4 = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-eth-wire = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-ecies = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-network-peers = { git = "https://github.com/paradigmxyz/reth.git" }
+alloy-consensus = { version = "0.11", default-features = false }
+secp256k1 = { version = "0.29", default-features = false, features = ["global-context", "recovery"] }
+futures = "0.3"
+tokio = { version = "1", default-features = false }
+eyre = "0.6"
