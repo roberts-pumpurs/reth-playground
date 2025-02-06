@@ -3929,6 +3929,7 @@ dependencies = [
  "reth-network",
  "reth-network-peers",
  "reth-primitives",
+ "reth-tracing",
  "secp256k1",
  "tokio",
 ]

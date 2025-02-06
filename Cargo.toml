@@ -11,6 +11,8 @@ reth-discv4 = { git = "https://github.com/paradigmxyz/reth.git" }
 reth-eth-wire = { git = "https://github.com/paradigmxyz/reth.git" }
 reth-ecies = { git = "https://github.com/paradigmxyz/reth.git" }
 reth-network-peers = { git = "https://github.com/paradigmxyz/reth.git" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth.git" }
+
 alloy-consensus = { version = "0.11", default-features = false }
 secp256k1 = { version = "0.29", default-features = false, features = ["global-context", "recovery"] }
 futures = "0.3"
