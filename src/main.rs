@@ -31,8 +31,6 @@ use tokio::net::{TcpListener, TcpStream};
 type AuthedP2PStream = P2PStream<ECIESStream<TcpStream>>;
 type AuthedEthStream = EthStream<P2PStream<ECIESStream<TcpStream>>, EthNetworkPrimitives>;
 
-pub static MAINNET_BOOT_NODES: LazyLock<Vec<NodeRecord>> = LazyLock::new(mainnet_nodes);
-
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     let _ = RethTracer::new()
@@ -62,6 +60,16 @@ async fn main() -> eyre::Result<()> {
     let maybe_peer_port = env::var("PEER_TCP_PORT").ok();
     let maybe_peer_public_key = env::var("PEER_ID").ok();
 
+    // Build a new Discv4 config using our local ENR and secret key.
+    let discv4_cfg = Discv4ConfigBuilder::default()
+        .add_boot_nodes(vec![])
+        .lookup_interval(Duration::from_secs(1))
+        .build();
+
+    // Start the discovery service. The `udp_addr` is where we'll listen for discv4,
+    // typically the same IP but it’s a UDP port.
+    let discv4 = Discv4::spawn(our_enr.udp_addr(), our_enr.clone(), our_key, discv4_cfg).await?;
+
     // talk to the external peer
     if let (Some(peer_ip), Some(peer_port)) = (maybe_peer_addr, maybe_peer_port) {
         let peer_addr: SocketAddr = format!("{peer_ip}:{peer_port}").parse()?;
@@ -76,30 +84,44 @@ async fn main() -> eyre::Result<()> {
         };
         let key_clone = our_key.clone();
 
-        // spawn a task that tries to connect to the other node
+        // Create a stream that notifies us of newly discovered nodes.
+        let mut discv4_stream = discv4.update_stream().await?;
+        discv4.add_node(peer);
+
+        // In a task, handle newly discovered peers:
         tokio::spawn(async move {
-            let (p2p_stream, their_hello) = match outbound::handshake_p2p(peer, our_key).await {
-                Ok(s) => s,
-                Err(e) => {
-                    error!("Failed P2P handshake with peer {}, {}", peer.address, e);
-                    return;
+            while let Some(update) = discv4_stream.next().await {
+                if let DiscoveryUpdate::Added(peer) = update {
+                    // Optionally skip peers you already know, or skip if the peer is yourself, etc.
+
+                    // Then connect (outbound) to them:
+                    let (p2p_stream, their_hello) =
+                        match outbound::handshake_p2p(peer, key_clone).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                error!("Failed P2P handshake with discovered peer {:?}: {e}", peer);
+                                continue;
+                            }
+                        };
+                    // Now do eth-wire handshake, etc.
+                    let (eth_stream, their_status) = match outbound::handshake_eth(p2p_stream).await
+                    {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("Failed ETH handshake with peer {}, {}", peer.address, e);
+                            return;
+                        }
+                    };
+
+                    info!(
+                        "Successfully connected to a peer at {}:{} ({}) using eth-wire version eth/{}",
+                        peer.address, peer.tcp_port, their_hello.client_version, their_status.version
+                    );
+
+                    snoop(peer, eth_stream).await;
                 }
-            };
-
-            let (eth_stream, their_status) = match outbound::handshake_eth(p2p_stream).await {
-                Ok(s) => s,
-                Err(e) => {
-                    error!("Failed ETH handshake with peer {}, {}", peer.address, e);
-                    return;
-                }
-            };
-
-            info!(
-                "Successfully connected to a peer at {}:{} ({}) using eth-wire version eth/{}",
-                peer.address, peer.tcp_port, their_hello.client_version, their_status.version
-            );
-
-            snoop(peer, eth_stream).await;
+            }
+            unreachable!()
         });
     }
 
